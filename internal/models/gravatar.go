@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-func GenerateGravatarURL(email string) string {
+func GetGravatarURL(email string, size int) string {
 	email = strings.ToLower(strings.TrimSpace(email))
 	hash := md5.Sum([]byte(email))
-	return fmt.Sprintf("https://www.gravatar.com/avatar/%x?d=identicon&s=80", hash)
+	return fmt.Sprintf("https://www.gravatar.com/avatar/%x?s=%d&d=identicon", hash, size)
 }

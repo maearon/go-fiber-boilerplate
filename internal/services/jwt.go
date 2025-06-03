@@ -1,18 +1,17 @@
 package services
 
 import (
-	"fmt"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v4"
 )
 
 type Claims struct {
-	UserID uint `json:"user_id"`
+	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
-func GenerateJWT(userID uint, secret string) (string, error) {
+func GenerateJWT(userID, secret string) (string, error) {
 	claims := &Claims{
 		UserID: userID,
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -25,22 +24,18 @@ func GenerateJWT(userID uint, secret string) (string, error) {
 	return token.SignedString([]byte(secret))
 }
 
-func ValidateJWT(tokenString, secret string) (uint, error) {
+func ValidateJWT(tokenString, secret string) (string, error) {
 	claims := &Claims{}
-
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
 		return []byte(secret), nil
 	})
 
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	if !token.Valid {
-		return 0, fmt.Errorf("invalid token")
+		return "", jwt.ErrSignatureInvalid
 	}
 
 	return claims.UserID, nil

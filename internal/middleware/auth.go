@@ -1,107 +1,79 @@
 package middleware
 
 import (
-	"net/http"
 	"strings"
 
-	"go-boilerplate/internal/models"
-	"go-boilerplate/internal/services"
+	"go-fiber-boilerplate/internal/models"
+	"go-fiber-boilerplate/internal/services"
 
-	"github.com/gin-gonic/gin"
+	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 )
 
-func AuthMiddleware(db *gorm.DB, jwtSecret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
+func RequireAuth(db *gorm.DB, jwtSecret string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		// Check for JWT token in Authorization header
+		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
-			c.Abort()
-			return
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Authorization header required",
+			})
 		}
 
+		// Extract token from "Bearer <token>"
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Bearer token required"})
-			c.Abort()
-			return
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid authorization format",
+			})
 		}
 
+		// Validate token
 		userID, err := services.ValidateJWT(tokenString, jwtSecret)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
-			return
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "Invalid token",
+			})
 		}
 
+		// Get user from database
 		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
-			c.Abort()
-			return
+		if err := db.First(&user, "id = ?", userID).Error; err != nil {
+			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
+				"error": "User not found",
+			})
 		}
 
-		if !user.Activated {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Account not activated"})
-			c.Abort()
-			return
-		}
-
-		c.Set("user", &user)
-		c.Next()
+		// Store user in context
+		c.Locals("user", &user)
+		return c.Next()
 	}
 }
 
-func AdminMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
-			c.Abort()
-			return
-		}
-
-		u := user.(*models.User)
-		if !u.Admin {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			c.Abort()
-			return
-		}
-
-		c.Next()
+func RequireAdmin(c *fiber.Ctx) error {
+	user := c.Locals("user").(*models.User)
+	if !user.Admin {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
+			"error": "Admin access required",
+		})
 	}
+	return c.Next()
 }
 
-func OptionalAuthMiddleware(db *gorm.DB, jwtSecret string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		authHeader := c.GetHeader("Authorization")
-		if authHeader == "" {
-			c.Next()
-			return
+func OptionalAuth(db *gorm.DB, jwtSecret string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		authHeader := c.Get("Authorization")
+		if authHeader != "" {
+			tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+			if tokenString != authHeader {
+				if userID, err := services.ValidateJWT(tokenString, jwtSecret); err == nil {
+					var user models.User
+					if err := db.First(&user, "id = ?", userID).Error; err == nil {
+						c.Locals("user", &user)
+					}
+				}
+			}
 		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			c.Next()
-			return
-		}
-
-		userID, err := services.ValidateJWT(tokenString, jwtSecret)
-		if err != nil {
-			c.Next()
-			return
-		}
-
-		var user models.User
-		if err := db.First(&user, userID).Error; err != nil {
-			c.Next()
-			return
-		}
-
-		if user.Activated {
-			c.Set("user", &user)
-		}
-
-		c.Next()
+		return c.Next()
 	}
 }

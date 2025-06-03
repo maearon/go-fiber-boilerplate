@@ -1,11 +1,9 @@
 package services
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 
-	"go-boilerplate/internal/config"
+	"go-fiber-boilerplate/internal/config"
 
 	"gopkg.in/gomail.v2"
 )
@@ -19,9 +17,14 @@ func NewEmailService(cfg *config.Config) *EmailService {
 }
 
 func (e *EmailService) SendActivationEmail(email, name, token string) error {
-	activationURL := fmt.Sprintf("%s/account_activations/%s/edit?email=%s", e.config.AppURL, token, email)
+	m := gomail.NewMessage()
+	m.SetHeader("From", e.config.SMTPUsername)
+	m.SetHeader("To", email)
+	m.SetHeader("Subject", "Account Activation")
 
-	subject := "Account activation"
+	activationURL := fmt.Sprintf("%s/account_activations/%s/edit?email=%s",
+		e.config.AppURL, token, email)
+
 	body := fmt.Sprintf(`
 		<h1>Sample App</h1>
 		<p>Hi %s,</p>
@@ -30,15 +33,23 @@ func (e *EmailService) SendActivationEmail(email, name, token string) error {
 		<p>If you have any questions, feel free to contact us.</p>
 	`, name, activationURL)
 
-	return e.sendEmail(email, subject, body)
+	m.SetBody("text/html", body)
+
+	d := gomail.NewDialer(e.config.SMTPHost, 587, e.config.SMTPUsername, e.config.SMTPPassword)
+	return d.DialAndSend(m)
 }
 
 func (e *EmailService) SendPasswordResetEmail(email, name, token string) error {
-	resetURL := fmt.Sprintf("%s/password_resets/%s/edit?email=%s", e.config.AppURL, token, email)
+	m := gomail.NewMessage()
+	m.SetHeader("From", e.config.SMTPUsername)
+	m.SetHeader("To", email)
+	m.SetHeader("Subject", "Password Reset")
 
-	subject := "Password reset"
+	resetURL := fmt.Sprintf("%s/password_resets/%s/edit?email=%s",
+		e.config.AppURL, token, email)
+
 	body := fmt.Sprintf(`
-		<h1>Password reset</h1>
+		<h1>Password Reset</h1>
 		<p>Hi %s,</p>
 		<p>To reset your password click the link below:</p>
 		<a href="%s">Reset password</a>
@@ -46,25 +57,8 @@ func (e *EmailService) SendPasswordResetEmail(email, name, token string) error {
 		<p>If you did not request your password to be reset, please ignore this email and your password will stay as it is.</p>
 	`, name, resetURL)
 
-	return e.sendEmail(email, subject, body)
-}
-
-func (e *EmailService) sendEmail(to, subject, body string) error {
-	m := gomail.NewMessage()
-	m.SetHeader("From", e.config.SMTPUsername)
-	m.SetHeader("To", to)
-	m.SetHeader("Subject", subject)
 	m.SetBody("text/html", body)
 
-	d := gomail.NewDialer(e.config.SMTPHost, e.config.SMTPPort, e.config.SMTPUsername, e.config.SMTPPassword)
-
+	d := gomail.NewDialer(e.config.SMTPHost, 587, e.config.SMTPUsername, e.config.SMTPPassword)
 	return d.DialAndSend(m)
-}
-
-func GenerateToken() (string, error) {
-	bytes := make([]byte, 16)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
 }
